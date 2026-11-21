@@ -1,0 +1,59 @@
+name: Inspect Mesho branding and Windows build details
+
+on:
+  push:
+    paths:
+      - ".github/workflows/inspect-mesho-details.yml"
+      - "amnezia-client-5.1.1.10(1).tar.gz"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract source
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem -File -Filter "*.tar.gz" | Select-Object -First 1
+          tar -xzf $archive.FullName
+          if ($LASTEXITCODE -ne 0) { throw "Extraction failed" }
+          $root = Get-ChildItem -Directory | Where-Object Name -Like "amnezia-client*" | Select-Object -First 1
+          "SOURCE_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
+      - name: Inspect exact build and branding files
+        shell: pwsh
+        run: |
+          $root = $env:SOURCE_ROOT
+          $out = Join-Path $env:RUNNER_TEMP "mesho-details.txt"
+          "WINDOWS BUILD SCRIPTS" | Out-File $out
+          $targets = @(
+            "BUILD-WINDOWS.bat",
+            "deploy/build.bat",
+            "client/cmake/clientBrandingDefaults.cmake",
+            "client/CMakeLists.txt",
+            "cmake/CPack.cmake"
+          )
+          foreach ($rel in $targets) {
+            $p = Join-Path $root $rel
+            if (Test-Path $p) {
+              "`n===== $rel =====" | Out-File $out -Append
+              Get-Content $p | Out-File $out -Append
+            }
+          }
+          "`nUI, ICON, RESOURCE FILES" | Out-File $out -Append
+          Get-ChildItem $root -Recurse -File | Where-Object {
+            $_.Extension -in '.qml','.qss','.css','.ui','.svg','.png','.ico','.qrc' -or $_.Name -match 'brand|logo|icon|theme|style|resource'
+          } | ForEach-Object { $_.FullName.Substring($root.Length) } | Out-File $out -Append
+          "`nBRANDING CONFIG REFERENCES" | Out-File $out -Append
+          Get-ChildItem (Join-Path $root "client") -Recurse -File -Include *.cmake,*.txt,*.json,*.xml,*.qrc,*.cpp,*.h,*.qml,*.svg | Select-String -Pattern 'CLIENT_TARGET_NAME|CLIENT_APP_NAME|CLIENT_DISPLAY_NAME|CLIENT_ORGANIZATION|CLIENT_ICON|CLIENT_LOGO|AmneziaVPN|Amnezia VPN|#([0-9A-Fa-f]{6})' | Select-Object -First 200 | ForEach-Object { "$($_.Path.Substring($root.Length)):$($_.LineNumber): $($_.Line.Trim())" } | Out-File $out -Append
+          New-Item -ItemType Directory -Force inspection-output | Out-Null
+          Copy-Item $out inspection-output/mesho-details.txt
+          Get-Content $out -TotalCount 250
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mesho-branding-build-details
+          path: inspection-output/mesho-details.txt
+          if-no-files-found: error
