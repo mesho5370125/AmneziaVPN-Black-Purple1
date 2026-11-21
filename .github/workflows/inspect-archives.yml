@@ -1,0 +1,51 @@
+name: Inspect uploaded archives
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'AmneziaVPN-5.1.1.10-Black-Purple-Windows-Build.zip'
+      - 'amnezia-client-5.1.1.10(1).tar.gz'
+      - '.github/workflows/inspect-archives.yml'
+
+jobs:
+  inspect:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Inspect ZIP and source archive
+        shell: pwsh
+        run: |
+          $report = Join-Path $env:RUNNER_TEMP 'archive-report.txt'
+          "ZIP ARCHIVE" | Out-File $report
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE 'AmneziaVPN-5.1.1.10-Black-Purple-Windows-Build.zip'
+          if (Test-Path $zipPath) {
+            Add-Content $report ("Size: " + (Get-Item $zipPath).Length + " bytes")
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+            try {
+              $zip.Entries | ForEach-Object { Add-Content $report $_.FullName }
+              $exe = @($zip.Entries | Where-Object { $_.FullName -match '\.exe$' })
+              Add-Content $report ("EXE_COUNT=" + $exe.Count)
+            } finally { $zip.Dispose() }
+          } else { Add-Content $report 'ZIP_NOT_FOUND' }
+
+          Add-Content $report ''
+          Add-Content $report 'SOURCE TAR.GZ'
+          $tarPath = Join-Path $env:GITHUB_WORKSPACE 'amnezia-client-5.1.1.10(1).tar.gz'
+          if (Test-Path $tarPath) {
+            Add-Content $report ("Size: " + (Get-Item $tarPath).Length + " bytes")
+            tar -tzf $tarPath | Out-File -Append $report
+          } else { Add-Content $report 'SOURCE_NOT_FOUND' }
+
+          Get-Content $report
+          "Report generated at $report" | Write-Host
+
+      - name: Upload inspection report
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-inspection-report
+          path: ${{ runner.temp }}/archive-report.txt
