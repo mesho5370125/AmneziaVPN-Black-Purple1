@@ -1,0 +1,62 @@
+name: Inspect Windows build and UI sources
+
+on:
+  push:
+    paths:
+      - ".github/workflows/inspect-build-ui.yml"
+      - "amnezia-client-5.1.1.10(1).tar.gz"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract source archive
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem -File -Filter "*.tar.gz" | Select-Object -First 1
+          if (-not $archive) { throw "Source tar.gz archive not found in repository root." }
+          tar -xzf $archive.FullName
+          if ($LASTEXITCODE -ne 0) { throw "tar extraction failed." }
+          $root = Get-ChildItem -Directory | Where-Object { $_.Name -like "amnezia-client*" } | Select-Object -First 1
+          if (-not $root) { throw "Extracted source directory not found." }
+          "SOURCE_ROOT=$($root.FullName)" >> $env:GITHUB_ENV
+      - name: Collect build instructions and UI file inventory
+        shell: pwsh
+        run: |
+          $root = $env:SOURCE_ROOT
+          $out = Join-Path $env:RUNNER_TEMP "source-inspection.txt"
+          "SOURCE ROOT: $root" | Out-File $out
+          $important = Get-ChildItem $root -Recurse -File | Where-Object {
+            $_.Name -match '^(BUILD-WINDOWS\.bat|build\.bat|README(\..*)?|CMakeLists\.txt|conanfile\..*|.*\.pro|.*\.pri)$'
+          } | Select-Object -First 100
+          foreach ($f in $important) {
+            "FILE: $($f.FullName.Substring($root.Length))" | Out-File $out -Append
+            Get-Content $f.FullName -TotalCount 300 -ErrorAction SilentlyContinue | Out-File $out -Append
+          }
+          "UI AND THEME FILE INVENTORY" | Out-File $out -Append
+          $ui = Get-ChildItem $root -Recurse -File | Where-Object {
+            $_.Extension -in '.qml','.qss','.css','.ui','.svg' -or $_.Name -match 'resource|theme|style|brand|logo'
+          }
+          $ui | ForEach-Object { $_.FullName.Substring($root.Length) } | Out-File $out -Append
+          "BRANDING AND COLOR REFERENCES (SAMPLE)" | Out-File $out -Append
+          $sourceFiles = Get-ChildItem $root -Recurse -File | Where-Object {
+            $_.Extension -in '.qml','.qss','.css','.cpp','.h','.json','.xml','.qrc','.ts'
+          }
+          $matches = $sourceFiles | Select-String -Pattern 'Amnezia|amnezia|#[0-9A-Fa-f]{6}' -List -ErrorAction SilentlyContinue | Select-Object -First 250
+          foreach ($m in $matches) {
+            "$($m.Path.Substring($root.Length)):$($m.LineNumber): $($m.Line.Trim())" | Out-File $out -Append
+          }
+          New-Item -ItemType Directory -Force -Path "inspection-output" | Out-Null
+          Copy-Item $out "inspection-output/source-inspection.txt"
+          Get-Content $out -TotalCount 400
+      - name: Upload inspection report
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-build-ui-inspection
+          path: inspection-output/source-inspection.txt
+          if-no-files-found: error
