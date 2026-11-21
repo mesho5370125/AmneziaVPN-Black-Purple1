@@ -1,0 +1,96 @@
+name: Build Mesho VPN for Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'AmneziaVPN-5.1.1.10-Black-Purple-Windows-Build.zip'
+      - 'amnezia-client-5.1.1.10(1).tar.gz'
+      - '.github/workflows/build-mesho-windows.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    env:
+      QT_VERSION: '6.8.3'
+      QIF_VERSION: '4.2'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract Windows source package
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:GITHUB_WORKSPACE 'AmneziaVPN-5.1.1.10-Black-Purple-Windows-Build.zip'
+          if (!(Test-Path $archive)) {
+            throw "Source ZIP not found: $archive"
+          }
+          $destination = Join-Path $env:RUNNER_TEMP 'mesho-source'
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
+          $root = Get-ChildItem -LiteralPath $destination -Directory | Select-Object -First 1
+          if (!$root -or !(Test-Path (Join-Path $root.FullName 'CMakeLists.txt'))) {
+            throw 'Could not locate project CMakeLists.txt in source archive.'
+          }
+          "MESHO_SOURCE_DIR=$($root.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Source root: $($root.FullName)"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Conan
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "conan>=2,<3"
+          conan profile detect --force
+          conan remote list
+
+      - name: Install Qt and Qt Installer Framework
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtremoteobjects qt5compat qtshadertools qthttpserver qtwebsockets
+          tools: tools_ifw
+          set-env: true
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build Mesho VPN installer
+        shell: cmd
+        working-directory: ${{ runner.temp }}\mesho-source\amnezia-client-5.1.1.10
+        env:
+          QT_INSTALL_DIR: ${{ runner.temp }}
+        run: |
+          deploy\build.bat --installer ifw
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mesho-VPN-Windows-Installer
+          path: ${{ runner.temp }}/mesho-source/amnezia-client-5.1.1.10/deploy/build/AmneziaVPN_*_windows_x64.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload portable build output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mesho-VPN-Windows-Build-Logs
+          path: |
+            ${{ runner.temp }}/mesho-source/amnezia-client-5.1.1.10/deploy/build/CMakeCache.txt
+            ${{ runner.temp }}/mesho-source/amnezia-client-5.1.1.10/deploy/build/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7
