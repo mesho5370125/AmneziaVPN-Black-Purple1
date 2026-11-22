@@ -47,6 +47,14 @@ jobs:
           git clone --depth 1 https://github.com/frankosterfeld/qtkeychain.git (Join-Path $thirdParty 'qtkeychain')
           if ($LASTEXITCODE -ne 0) { throw 'Could not fetch qtkeychain submodule.' }
 
+          # This legacy submodule requests Qt 5, while Mesho is built with Qt 6.
+          # Point its CMake targets at Qt 6 (the project uses the Qt 5 compatibility API).
+          $sfCmake = Join-Path $thirdParty 'SortFilterProxyModel\CMakeLists.txt'
+          $sfText = Get-Content -LiteralPath $sfCmake -Raw
+          $sfText = $sfText -replace 'find_package\(Qt5 REQUIRED\s+Core\s+Qml\s+\)', 'find_package(Qt6 REQUIRED COMPONENTS Core Qml)'
+          $sfText = $sfText.Replace('Qt5::Core', 'Qt6::Core').Replace('Qt5::Qml', 'Qt6::Qml')
+          Set-Content -LiteralPath $sfCmake -Value $sfText -NoNewline
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
