@@ -92,5 +92,9 @@ jobs:
           path: |
             ${{ runner.temp }}/mesho-source/amnezia-client-5.1.1.10/deploy/build/CMakeCache.txt
             ${{ runner.temp }}/mesho-source/amnezia-client-5.1.1.10/deploy/build/**/*.log
+            ${{ runner.temp }}/mesho-source/amnezia-client-5.1.1.10/deploy/build/CMakeFiles/CMakeConfigureLog.yaml
+            ${{ runner.temp }}/mesho-source/amnezia-client-5.1.1.10/deploy/build/CMakeFiles/CMakeError.log
+            ${{ runner.temp }}/mesho-source/amnezia-client-5.1.1.10/deploy/build/CMakeFiles/CMakeOutput.log
+            ${{ runner.temp }}/mesho-source/amnezia-client-5.1.1.10/deploy/build/CMakeFiles/**/*.log
           if-no-files-found: ignore
           retention-days: 7
