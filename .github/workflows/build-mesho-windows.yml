@@ -53,6 +53,10 @@ jobs:
           $sfText = Get-Content -LiteralPath $sfCmake -Raw
           $sfText = $sfText -replace 'find_package\(Qt5 REQUIRED\s+Core\s+Qml\s+\)', 'find_package(Qt6 REQUIRED COMPONENTS Core Qml)'
           $sfText = $sfText.Replace('Qt5::Core', 'Qt6::Core').Replace('Qt5::Qml', 'Qt6::Qml')
+          # The upstream submodule hard-codes C++11; Qt 6.8 requires C++17.
+          $sfText = $sfText -replace 'set\(CMAKE_CXX_STANDARD 11\)', 'set(CMAKE_CXX_STANDARD 17)'
+          # MSVC must expose the selected C++ standard through __cplusplus.
+          $sfText += "`nif(MSVC)`n  target_compile_options(SortFilterProxyModel PRIVATE /Zc:__cplusplus)`nendif()`n"
           Set-Content -LiteralPath $sfCmake -Value $sfText -NoNewline
 
       - name: Set up Python
