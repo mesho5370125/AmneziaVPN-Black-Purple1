@@ -76,13 +76,26 @@ jobs:
         with:
           arch: x64
 
-      - name: Build Mesho VPN installer
-        shell: cmd
+      - name: Build Mesho VPN installer (retry transient Conan outages)
+        shell: pwsh
         working-directory: ${{ runner.temp }}\mesho-source\amnezia-client-5.1.1.10
         env:
           QT_INSTALL_DIR: ${{ runner.temp }}
         run: |
-          deploy\build.bat --installer ifw
+          $maxAttempts = 6
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "Mesho VPN build attempt $attempt of $maxAttempts"
+            cmd.exe /d /c "deploy\build.bat --installer ifw"
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "Mesho VPN build completed successfully."
+              exit 0
+            }
+            if ($attempt -lt $maxAttempts) {
+              Write-Warning "Build did not complete; waiting 60 seconds before retrying in case the Conan package server is temporarily unavailable."
+              Start-Sleep -Seconds 60
+            }
+          }
+          throw "Mesho VPN build did not complete after $maxAttempts attempts."
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
