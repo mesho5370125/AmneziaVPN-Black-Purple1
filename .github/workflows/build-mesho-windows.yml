@@ -39,6 +39,14 @@ jobs:
           "MESHO_SOURCE_DIR=$($root.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Source root: $($root.FullName)"
 
+          # The supplied source archive omits Git submodule contents.
+          $thirdParty = Join-Path $root.FullName 'client\3rd'
+          New-Item -ItemType Directory -Force -Path $thirdParty | Out-Null
+          git clone --depth 1 https://github.com/mitchcurtis/SortFilterProxyModel.git (Join-Path $thirdParty 'SortFilterProxyModel')
+          if ($LASTEXITCODE -ne 0) { throw 'Could not fetch SortFilterProxyModel submodule.' }
+          git clone --depth 1 https://github.com/frankosterfeld/qtkeychain.git (Join-Path $thirdParty 'qtkeychain')
+          if ($LASTEXITCODE -ne 0) { throw 'Could not fetch qtkeychain submodule.' }
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
